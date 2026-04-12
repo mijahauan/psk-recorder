@@ -211,10 +211,23 @@ def _handle_version(args):
 def _handle_daemon(args):
     _install_sighup_handler()
     logger = logging.getLogger("psk_recorder.daemon")
-    logger.info("daemon mode — Phase 1 not yet implemented")
-    logger.info("radiod-id: %s", args.radiod_id)
-    logger.info("config: %s", args.config)
-    sys.exit(0)
+
+    from psk_recorder.config import DEFAULT_CONFIG_PATH, load_config, resolve_radiod_block
+    from psk_recorder.core.recorder import PskRecorder
+
+    config_path = args.config or Path(
+        os.environ.get("PSK_RECORDER_CONFIG", str(DEFAULT_CONFIG_PATH))
+    )
+    config = load_config(config_path)
+    radiod_block = resolve_radiod_block(config, args.radiod_id)
+
+    logger.info(
+        "Starting psk-recorder daemon for radiod %s (config=%s)",
+        radiod_block.get("id", "default"), config_path,
+    )
+
+    recorder = PskRecorder(config, radiod_block)
+    recorder.run()
 
 
 def _handle_status(args):
