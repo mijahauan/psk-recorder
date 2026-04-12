@@ -61,7 +61,7 @@ class PskRecorder:
 
     def _provision_channels(self) -> None:
         """Create ChannelStream objects for all configured frequencies."""
-        from ka9q import RadiodControl, Encoding
+        from ka9q import RadiodControl
 
         status = resolve_radiod_status(self._radiod)
         logger.info("Connecting to radiod at %s", status)
@@ -97,24 +97,13 @@ class PskRecorder:
                     "Provisioning %s %d Hz (sr=%d, preset=%s, enc=%s)",
                     mode.upper(), freq_hz, sample_rate, preset, encoding_str,
                 )
-                try:
-                    channel_info = self._control.ensure_channel(
-                        frequency_hz=float(freq_hz),
-                        preset=preset,
-                        sample_rate=sample_rate,
-                        encoding=encoding_int,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to provision %s %d Hz", mode.upper(), freq_hz
-                    )
-                    continue
-
                 stream = ChannelStream(
-                    channel_info=channel_info,
+                    control=self._control,
                     mode=mode,
                     frequency_hz=freq_hz,
                     sample_rate=sample_rate,
+                    preset=preset,
+                    encoding=encoding_int,
                     radiod_id=self._radiod_id,
                     spool_dir=spool_root,
                     log_fd=self._log_fds[mode],

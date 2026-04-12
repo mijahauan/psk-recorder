@@ -1,8 +1,9 @@
-"""ChannelStream: one RadiodStream + Ring + SlotWorker per channel.
+"""ChannelStream: one ManagedStream + Ring + SlotWorker per channel.
 
 Each ChannelStream handles a single frequency on a single radiod.
-It receives samples from ka9q-python's callback, pushes them into
-the ring buffer, and delegates slot extraction + decoding to a
+Uses ka9q-python's ManagedStream for automatic channel restoration
+when the RTP stream drops (e.g., radiod restart). Pushes samples
+into the ring buffer and delegates slot extraction + decoding to a
 SlotWorker thread.
 """
 
@@ -25,24 +26,28 @@ RING_SECONDS = 60.0
 
 
 class ChannelStream:
-    """Manages one channel: RTP stream → Ring → SlotWorker → decoder."""
+    """Manages one channel: ManagedStream → Ring → SlotWorker → decoder."""
 
     def __init__(
         self,
-        channel_info,
+        control,
         mode: str,
         frequency_hz: int,
         sample_rate: int,
+        preset: str,
+        encoding: int,
         radiod_id: str,
         spool_dir: Path,
         log_fd,
         decoder_path: str,
         keep_wav: bool = False,
     ):
-        self._channel_info = channel_info
+        self._control = control
         self._mode = mode
         self._frequency_hz = frequency_hz
         self._sample_rate = sample_rate
+        self._preset = preset
+        self._encoding = encoding
         self._radiod_id = radiod_id
 
         cadence = FT4_CADENCE_SEC if mode == "ft4" else FT8_CADENCE_SEC
@@ -69,22 +74,28 @@ class ChannelStream:
         self._total_delivered: int = 0
 
     def start(self) -> None:
-        """Start the RTP stream and slot worker."""
-        from ka9q import RadiodStream
+        """Start the managed RTP stream and slot worker."""
+        from ka9q import ManagedStream
 
-        self._stream = RadiodStream(
-            channel=self._channel_info,
+        self._stream = ManagedStream(
+            control=self._control,
+            frequency_hz=float(self._frequency_hz),
+            preset=self._preset,
+            sample_rate=self._sample_rate,
+            encoding=self._encoding,
             on_samples=self._on_samples,
+            on_stream_dropped=self._on_stream_dropped,
+            on_stream_restored=self._on_stream_restored,
         )
         self._stream.start()
         self._slot_worker.start()
         logger.info(
-            "%s %d Hz: stream started (sr=%d)",
+            "%s %d Hz: managed stream started (sr=%d)",
             self._mode.upper(), self._frequency_hz, self._sample_rate,
         )
 
     def stop(self) -> None:
-        """Stop the RTP stream and slot worker."""
+        """Stop the managed stream and slot worker."""
         if self._stream:
             try:
                 self._stream.stop()
@@ -97,7 +108,7 @@ class ChannelStream:
         )
 
     def _on_samples(self, samples: np.ndarray, quality) -> None:
-        """RadiodStream callback — push samples into the ring."""
+        """ManagedStream callback — push samples into the ring."""
         n = len(samples)
         if n == 0:
             return
@@ -121,6 +132,19 @@ class ChannelStream:
 
         self._ring.push(samples, utc_of_first)
         self._total_delivered = quality.total_samples_delivered
+
+    def _on_stream_dropped(self, reason: str) -> None:
+        logger.warning(
+            "%s %d Hz: stream dropped — %s",
+            self._mode.upper(), self._frequency_hz, reason,
+        )
+        self._stream_start_epoch = None
+
+    def _on_stream_restored(self, channel_info) -> None:
+        logger.info(
+            "%s %d Hz: stream restored",
+            self._mode.upper(), self._frequency_hz,
+        )
 
     @property
     def mode(self) -> str:
