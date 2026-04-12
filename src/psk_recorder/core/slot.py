@@ -132,7 +132,8 @@ class SlotWorker:
 
     def _write_spool_wav(self, samples) -> Path:
         slot_time = time.gmtime(self._next_slot_start)
-        filename = time.strftime("%y%m%d_%H%M%S", slot_time) + ".wav"
+        freq_khz = self._frequency_hz // 1000
+        filename = time.strftime("%y%m%d_%H%M%S", slot_time) + f"_{freq_khz}.wav"
         wav_path = self._spool_dir / filename
 
         write_wav(

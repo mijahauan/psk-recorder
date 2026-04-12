@@ -21,7 +21,7 @@ from psk_recorder.config import (
     get_mode_params,
     resolve_radiod_status,
 )
-from psk_recorder.core.stream import ChannelStream
+from psk_recorder.core.stream import ChannelSink
 from psk_recorder.core.uploader import PskReporterUploader
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,8 @@ class PskRecorder:
         self._paths = config.get("paths", {})
         self._station = config.get("station", {})
 
-        self._streams: list[ChannelStream] = []
+        self._sinks: list[ChannelSink] = []
+        self._multi_streams: list = []
         self._uploaders: list[PskReporterUploader] = []
         self._log_fds: dict[str, object] = {}
         self._running = False
@@ -60,8 +61,13 @@ class PskRecorder:
             self._shutdown()
 
     def _provision_channels(self) -> None:
-        """Create ChannelStream objects for all configured frequencies."""
-        from ka9q import RadiodControl
+        """Create ChannelSinks and register them with MultiStream(s).
+
+        One MultiStream per unique multicast group. In the common case
+        (FT8+FT4 share preset/sample_rate/encoding) all channels land on
+        one group and we end up with a single MultiStream.
+        """
+        from ka9q import MultiStream, RadiodControl
 
         status = resolve_radiod_status(self._radiod)
         logger.info("Connecting to radiod at %s", status)
@@ -75,6 +81,8 @@ class PskRecorder:
         ))
         decoder = self._paths.get("decoder", "/usr/local/bin/decode_ft8")
         keep_wav = self._paths.get("keep_wav", False)
+
+        multi_by_group: dict[tuple, object] = {}
 
         for mode in ("ft8", "ft4"):
             freqs = get_freqs(self._radiod, mode)
@@ -97,35 +105,96 @@ class PskRecorder:
                     "Provisioning %s %d Hz (sr=%d, preset=%s, enc=%s)",
                     mode.upper(), freq_hz, sample_rate, preset, encoding_str,
                 )
-                stream = ChannelStream(
-                    control=self._control,
+                sink = ChannelSink(
                     mode=mode,
                     frequency_hz=freq_hz,
                     sample_rate=sample_rate,
                     preset=preset,
                     encoding=encoding_int,
-                    radiod_id=self._radiod_id,
                     spool_dir=spool_root,
                     log_fd=self._log_fds[mode],
                     decoder_path=decoder,
                     keep_wav=keep_wav,
                 )
-                self._streams.append(stream)
+                self._add_sink_to_multi(sink, multi_by_group)
+                self._sinks.append(sink)
 
+        self._multi_streams = list(multi_by_group.values())
         logger.info(
-            "Provisioned %d channels on radiod %s",
-            len(self._streams), self._radiod_id,
+            "Provisioned %d channels across %d multicast group(s) on radiod %s",
+            len(self._sinks), len(self._multi_streams), self._radiod_id,
         )
 
-    def _start_streams(self) -> None:
-        for stream in self._streams:
+    def _add_sink_to_multi(
+        self, sink: ChannelSink, multi_by_group: dict,
+    ) -> None:
+        """Attach sink to the MultiStream for its multicast group.
+
+        Creates a new MultiStream on group mismatch. The grouping key is
+        discovered after the first add_channel (which calls ensure_channel
+        internally); subsequent adds to a MultiStream that resolves to a
+        different group will raise ValueError, at which point we create a
+        fresh MultiStream for that group.
+        """
+        from ka9q import MultiStream
+
+        if not multi_by_group:
+            multi = MultiStream(control=self._control)
+            info = multi.add_channel(
+                frequency_hz=float(sink.frequency_hz),
+                preset=sink.preset,
+                sample_rate=sink.sample_rate,
+                encoding=sink.encoding,
+                on_samples=sink.on_samples,
+                on_stream_dropped=sink.on_stream_dropped,
+                on_stream_restored=sink.on_stream_restored,
+            )
+            key = (info.multicast_address, info.port)
+            multi_by_group[key] = multi
+            return
+
+        for key, multi in multi_by_group.items():
             try:
-                stream.start()
+                multi.add_channel(
+                    frequency_hz=float(sink.frequency_hz),
+                    preset=sink.preset,
+                    sample_rate=sink.sample_rate,
+                    encoding=sink.encoding,
+                    on_samples=sink.on_samples,
+                    on_stream_dropped=sink.on_stream_dropped,
+                    on_stream_restored=sink.on_stream_restored,
+                )
+                return
+            except ValueError:
+                continue
+
+        multi = MultiStream(control=self._control)
+        info = multi.add_channel(
+            frequency_hz=float(sink.frequency_hz),
+            preset=sink.preset,
+            sample_rate=sink.sample_rate,
+            encoding=sink.encoding,
+            on_samples=sink.on_samples,
+            on_stream_dropped=sink.on_stream_dropped,
+            on_stream_restored=sink.on_stream_restored,
+        )
+        key = (info.multicast_address, info.port)
+        multi_by_group[key] = multi
+
+    def _start_streams(self) -> None:
+        for sink in self._sinks:
+            try:
+                sink.start()
             except Exception:
                 logger.exception(
-                    "Failed to start %s %d Hz",
-                    stream.mode, stream.frequency_hz,
+                    "Failed to start sink %s %d Hz",
+                    sink.mode, sink.frequency_hz,
                 )
+        for multi in self._multi_streams:
+            try:
+                multi.start()
+            except Exception:
+                logger.exception("Failed to start MultiStream")
 
     def _start_uploaders(self) -> None:
         pskreporter = self._paths.get(
@@ -208,8 +277,13 @@ class PskRecorder:
         logger.info("Shutting down...")
         for uploader in self._uploaders:
             uploader.stop()
-        for stream in self._streams:
-            stream.stop()
+        for multi in self._multi_streams:
+            try:
+                multi.stop()
+            except Exception:
+                logger.exception("Error stopping MultiStream")
+        for sink in self._sinks:
+            sink.stop()
         for fd in self._log_fds.values():
             try:
                 fd.close()
