@@ -1,0 +1,43 @@
+# psk-recorder configuration
+# See https://github.com/mijahauan/psk-recorder for documentation.
+
+[station]
+callsign    = "YOURCALL"
+grid_square = "AA00aa"
+# Optional PSWS identifiers (not required for psk-recorder operation):
+# psws_station_id    = "S000000"
+# psws_instrument_id = "0"
+
+[paths]
+spool_dir   = "/var/lib/psk-recorder"
+log_dir     = "/var/log/psk-recorder"
+decoder     = "/usr/local/bin/decode_ft8"
+pskreporter = "/usr/local/bin/pskreporter"
+keep_wav    = false
+
+# Optional standalone fallback for chain-delay correction (contract v0.3 §8).
+# Overridden by RADIOD_<id>_CHAIN_DELAY_NS in coordination.env when present.
+# [timing]
+# chain_delay_ns = 0
+
+[[radiod]]
+id            = "my-rx888"
+radiod_status = "my-rx888-status.local"
+
+[radiod.ft8]
+sample_rate = 12000
+preset      = "usb"
+encoding    = "s16be"
+freqs_hz    = [
+  1_840_000,  3_573_000,  5_357_000,  7_074_000, 10_136_000,
+  14_074_000, 18_100_000, 21_074_000, 24_915_000, 28_074_000,
+]
+
+[radiod.ft4]
+sample_rate = 12000
+preset      = "usb"
+encoding    = "s16be"
+freqs_hz    = [
+  1_840_000,  3_575_000,  7_047_500, 10_140_000, 14_080_000,
+  18_104_000, 21_140_000, 24_919_000, 28_180_000, 50_318_000,
+]

@@ -1,0 +1,159 @@
+#!/bin/bash
+# install.sh — first-run bootstrap for psk-recorder (Pattern A editable install)
+#
+# Usage: sudo ./scripts/install.sh [--pull] [--yes]
+#
+# What it does:
+#   1. Creates service user pskrec:pskrec
+#   2. Clones/links repo to /opt/git/psk-recorder
+#   3. Creates venv at /opt/psk-recorder/venv with editable install
+#   4. Renders config template (non-destructive — never overwrites)
+#   5. Installs systemd unit template
+#   6. Disables native ka9q-radio FT services if running
+#   7. Enables psk-recorder@<radiod_id> instances from config
+#
+# Idempotent: safe to re-run.
+
+set -euo pipefail
+
+SERVICE_USER="pskrec"
+SERVICE_GROUP="pskrec"
+REPO_SOURCE="/opt/git/psk-recorder"
+VENV_DIR="/opt/psk-recorder/venv"
+CONFIG_DIR="/etc/psk-recorder"
+CONFIG_FILE="${CONFIG_DIR}/psk-recorder-config.toml"
+SPOOL_DIR="/var/lib/psk-recorder"
+LOG_DIR="/var/log/psk-recorder"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+ui_info()  { echo "[INFO]  $*"; }
+ui_warn()  { echo "[WARN]  $*" >&2; }
+ui_error() { echo "[ERROR] $*" >&2; }
+
+# --- Phase 0: arg parsing ---
+DO_PULL=false
+AUTO_YES=false
+for arg in "$@"; do
+    case "$arg" in
+        --pull) DO_PULL=true ;;
+        --yes)  AUTO_YES=true ;;
+    esac
+done
+
+if [[ $EUID -ne 0 ]]; then
+    ui_error "Must run as root (sudo)"
+    exit 1
+fi
+
+# --- Phase 1: service user ---
+if ! id -u "$SERVICE_USER" &>/dev/null; then
+    ui_info "Creating service user $SERVICE_USER"
+    useradd --system --shell /usr/sbin/nologin \
+            --home-dir /nonexistent --no-create-home \
+            "$SERVICE_USER"
+fi
+
+# --- Phase 2: repo + venv ---
+if [[ ! -d "$REPO_SOURCE" ]]; then
+    ui_info "Linking $REPO_ROOT -> $REPO_SOURCE"
+    mkdir -p "$(dirname "$REPO_SOURCE")"
+    ln -sfn "$REPO_ROOT" "$REPO_SOURCE"
+fi
+
+# Traversability check (Pattern A defense)
+if ! sudo -u "$SERVICE_USER" test -r "$REPO_SOURCE/src/psk_recorder/__init__.py"; then
+    ui_error "Service user $SERVICE_USER cannot read $REPO_SOURCE/src/psk_recorder/__init__.py"
+    ui_error "Fix: ensure the repo is at /opt/git/psk-recorder (not under a mode-700 home)"
+    ui_error "  or: chmod g+rx the path and add $SERVICE_USER to the owner's group"
+    exit 1
+fi
+
+if $DO_PULL; then
+    ui_info "Pulling latest from origin"
+    git -C "$REPO_SOURCE" pull --ff-only
+fi
+
+if [[ ! -d "$VENV_DIR" ]]; then
+    ui_info "Creating venv at $VENV_DIR"
+    mkdir -p "$(dirname "$VENV_DIR")"
+    python3 -m venv "$VENV_DIR"
+fi
+
+ui_info "Installing psk-recorder (editable) into venv"
+"$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel >/dev/null
+"$VENV_DIR/bin/pip" install -e "$REPO_SOURCE" >/dev/null
+
+# Post-install verify
+if ! sudo -u "$SERVICE_USER" "$VENV_DIR/bin/python3" -c 'import psk_recorder' 2>/dev/null; then
+    ui_error "Post-install verify failed: $SERVICE_USER cannot import psk_recorder"
+    exit 1
+fi
+ui_info "Post-install verify OK"
+
+# --- Phase 3: config ---
+mkdir -p "$CONFIG_DIR"
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    ui_info "Rendering config template -> $CONFIG_FILE"
+    cp "$REPO_SOURCE/config/psk-recorder-config.toml.template" "$CONFIG_FILE"
+    ui_warn "Edit $CONFIG_FILE with your callsign, grid, and radiod settings"
+else
+    ui_info "Config exists at $CONFIG_FILE — not overwriting"
+fi
+
+# --- Phase 4: directories ---
+for dir in "$SPOOL_DIR" "$LOG_DIR"; do
+    mkdir -p "$dir"
+    chown "$SERVICE_USER:$SERVICE_GROUP" "$dir"
+done
+
+# --- Phase 5: systemd ---
+ui_info "Installing systemd unit template"
+install -o root -g root -m 644 \
+    "$REPO_SOURCE/systemd/psk-recorder@.service" \
+    /etc/systemd/system/psk-recorder@.service
+systemctl daemon-reload
+
+# --- Phase 6: disable native ka9q-radio FT services ---
+for unit in ft8-record.service ft4-record.service; do
+    if systemctl is-active --quiet "$unit" 2>/dev/null; then
+        ui_warn "Disabling native ka9q-radio unit: $unit (psk-recorder replaces it)"
+        systemctl disable --now "$unit"
+    fi
+done
+for pattern in 'ft8-decode@*.service' 'ft4-decode@*.service' \
+               'pskreporter@ft8.service' 'pskreporter@ft4.service'; do
+    for unit in $(systemctl list-units --plain --no-legend "$pattern" 2>/dev/null | awk '{print $1}'); do
+        if [[ -n "$unit" ]]; then
+            ui_warn "Disabling native ka9q-radio unit: $unit (psk-recorder replaces it)"
+            systemctl disable --now "$unit"
+        fi
+    done
+done
+
+# --- Phase 7: enable instances ---
+ui_info "Parsing radiod IDs from $CONFIG_FILE"
+RADIOD_IDS=$("$VENV_DIR/bin/python3" -c "
+import tomllib
+with open('$CONFIG_FILE', 'rb') as f:
+    cfg = tomllib.load(f)
+blocks = cfg.get('radiod', [])
+if isinstance(blocks, dict):
+    blocks = [blocks]
+for b in blocks:
+    print(b.get('id', 'default'))
+" 2>/dev/null)
+
+if [[ -z "$RADIOD_IDS" ]]; then
+    ui_warn "No radiod IDs found in config — no instances enabled"
+else
+    for rid in $RADIOD_IDS; do
+        ui_info "Enabling psk-recorder@${rid}.service"
+        systemctl enable "psk-recorder@${rid}.service"
+        # Don't start yet — daemon is Phase 1 stub
+        ui_info "  (not starting — daemon not yet implemented)"
+    done
+fi
+
+ui_info "Install complete. Edit $CONFIG_FILE then start instances with:"
+ui_info "  sudo systemctl start psk-recorder@<radiod-id>"

@@ -1,0 +1,62 @@
+[package]
+name             = "psk-recorder"
+version          = "0.1.0"
+contract_version = "0.3"
+license          = "MIT"
+
+[build]
+steps = [
+    "python3 -m venv /opt/psk-recorder/venv",
+    "/opt/psk-recorder/venv/bin/pip install --upgrade pip setuptools wheel",
+    "/opt/psk-recorder/venv/bin/pip install -e /opt/git/psk-recorder",
+]
+produces = [
+    "/opt/psk-recorder/venv/bin/psk-recorder",
+]
+
+[[install.steps]]
+kind = "link"
+src  = "/opt/psk-recorder/venv/bin/psk-recorder"
+dst  = "/usr/local/bin/psk-recorder"
+
+[[install.steps]]
+kind = "link"
+src  = "systemd/psk-recorder@.service"
+dst  = "/etc/systemd/system/psk-recorder@.service"
+
+[[install.steps]]
+kind     = "render"
+src      = "config/psk-recorder-config.toml.template"
+dst      = "/etc/psk-recorder/psk-recorder-config.toml"
+if_absent = true
+
+[[install.steps]]
+kind = "mkdir"
+dst  = "/var/lib/psk-recorder"
+owner = "pskrec:pskrec"
+mode  = "0755"
+
+[[install.steps]]
+kind = "mkdir"
+dst  = "/var/log/psk-recorder"
+owner = "pskrec:pskrec"
+mode  = "0755"
+
+[systemd]
+units = ["psk-recorder@.service"]
+
+[deps]
+[[deps.git]]
+name       = "ka9q-radio"
+url        = "https://github.com/ka9q/ka9q-radio.git"
+note       = "provides decode_ft8 binary"
+
+[[deps.git]]
+name       = "ftlib-pskreporter"
+url        = "https://github.com/pjsg/ftlib-pskreporter.git"
+note       = "provides pskreporter binary"
+
+[[deps.pypi]]
+name    = "ka9q-python"
+version = "3.6.0"
+venv    = "/opt/psk-recorder/venv"

@@ -1,0 +1,26 @@
+[station]
+callsign    = "AC0G"
+grid_square = "EM38ww40pk"
+
+[paths]
+spool_dir   = "/tmp/psk-recorder-test/spool"
+log_dir     = "/tmp/psk-recorder-test/log"
+decoder     = "/usr/local/bin/decode_ft8"
+pskreporter = "/usr/local/bin/pskreporter"
+keep_wav    = false
+
+[[radiod]]
+id            = "test-rx888"
+radiod_status = "test-status.local"
+
+[radiod.ft8]
+sample_rate = 12000
+preset      = "usb"
+encoding    = "s16be"
+freqs_hz    = [14074000, 7074000]
+
+[radiod.ft4]
+sample_rate = 12000
+preset      = "usb"
+encoding    = "s16be"
+freqs_hz    = [14080000, 7047500]
