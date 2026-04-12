@@ -172,7 +172,7 @@ def _collect_issues(config: dict, paths: dict) -> list[dict]:
         issues.append({
             "severity": "warn",
             "instance": "all",
-            "message": f"pskreporter not found: {pskreporter}",
+            "message": f"pskreporter-sender not found: {pskreporter}",
         })
 
     radiod_blocks = config.get("radiod", [])

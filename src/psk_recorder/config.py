@@ -19,7 +19,7 @@ DEFAULTS: dict[str, Any] = {
         "spool_dir": "/var/lib/psk-recorder",
         "log_dir": "/var/log/psk-recorder",
         "decoder": "/usr/local/bin/decode_ft8",
-        "pskreporter": "/usr/local/bin/pskreporter",
+        "pskreporter": "/usr/local/bin/pskreporter-sender",
         "keep_wav": False,
     },
 }

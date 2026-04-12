@@ -139,7 +139,9 @@ class PskRecorder:
                 )
 
     def _start_uploaders(self) -> None:
-        pskreporter = self._paths.get("pskreporter", "/usr/local/bin/pskreporter")
+        pskreporter = self._paths.get(
+            "pskreporter", "/usr/local/bin/pskreporter-sender"
+        )
         callsign = self._station.get("callsign", "")
         grid = self._station.get("grid_square", "")
 
@@ -158,6 +160,7 @@ class PskRecorder:
                 log_path=log_path,
                 callsign=callsign,
                 grid_square=grid,
+                mode=mode,
             )
             uploader.start()
             self._uploaders.append(uploader)

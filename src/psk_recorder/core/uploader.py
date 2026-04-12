@@ -28,11 +28,13 @@ class PskReporterUploader:
         log_path: Path,
         callsign: str,
         grid_square: str,
+        mode: str = "ft8",
     ):
         self._binary = pskreporter_path
         self._log_path = log_path
         self._callsign = callsign
         self._grid_square = grid_square
+        self._mode = mode
         self._proc: Optional[subprocess.Popen] = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -59,7 +61,8 @@ class PskReporterUploader:
 
     def _supervise_loop(self) -> None:
         while self._running:
-            if not Path(self._binary).is_file():
+            import shutil
+            if not shutil.which(self._binary) and not Path(self._binary).is_file():
                 logger.warning(
                     "pskreporter binary not found at %s — "
                     "spots will accumulate in %s but not upload",
@@ -93,11 +96,14 @@ class PskReporterUploader:
                 self._backoff = min(self._backoff * 2, MAX_BACKOFF)
 
     def _start_process(self) -> None:
+        # pskreporter-sender CLI:
+        #   pskreporter-sender --callsign=XX --locator=YY <logfile> [<mode>]
         cmd = [
             self._binary,
-            "-c", self._callsign,
-            "-g", self._grid_square,
+            f"--callsign={self._callsign}",
+            f"--locator={self._grid_square}",
             str(self._log_path),
+            self._mode,
         ]
         self._proc = subprocess.Popen(
             cmd,
@@ -105,6 +111,6 @@ class PskReporterUploader:
             stderr=subprocess.PIPE,
         )
         logger.info(
-            "pskreporter started (pid=%d) tailing %s",
-            self._proc.pid, self._log_path,
+            "pskreporter-sender started (pid=%d) tailing %s mode=%s",
+            self._proc.pid, self._log_path, self._mode,
         )
