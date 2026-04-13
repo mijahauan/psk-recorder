@@ -177,6 +177,7 @@ def _handle_validate(args):
     except FileNotFoundError:
         payload = {
             "ok": False,
+            "config_path": str(config_path),
             "issues": [
                 {
                     "severity": "fail",
@@ -189,7 +190,7 @@ def _handle_validate(args):
         sys.exit(1)
         return
 
-    payload = build_validate(config)
+    payload = build_validate(config, config_path)
     print(json.dumps(payload, indent=2))
     if not payload["ok"]:
         sys.exit(1)

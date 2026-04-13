@@ -88,7 +88,7 @@ class InventoryV03Tests(unittest.TestCase):
         self.assertEqual(self.data["client"], "psk-recorder")
 
     def test_contract_version(self):
-        self.assertEqual(self.data["contract_version"], "0.3")
+        self.assertEqual(self.data["contract_version"], "0.4")
 
     def test_has_config_path(self):
         self.assertIn("config_path", self.data)

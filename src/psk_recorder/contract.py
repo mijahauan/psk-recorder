@@ -11,6 +11,7 @@ from typing import Any
 
 from psk_recorder.config import (
     get_freqs,
+    get_mode_params,
     load_config,
     resolve_radiod_status,
 )
@@ -18,7 +19,7 @@ from psk_recorder.version import GIT_INFO
 
 logger = logging.getLogger(__name__)
 
-CONTRACT_VERSION = "0.3"
+CONTRACT_VERSION = "0.4"
 
 
 def build_inventory(config: dict, config_path: Path) -> dict:
@@ -131,14 +132,20 @@ def build_inventory(config: dict, config_path: Path) -> dict:
     return payload
 
 
-def build_validate(config: dict) -> dict:
-    """Build the validate --json payload per contract v0.3."""
+def build_validate(config: dict, config_path: Path | None = None) -> dict:
+    """Build the validate --json payload per contract v0.4.
+
+    §12.3: report the absolute path of the loaded config.
+    """
     paths = config.get("paths", {})
     issues = _collect_issues(config, paths)
-    return {
+    payload: dict[str, Any] = {
         "ok": not any(i["severity"] == "fail" for i in issues),
-        "issues": issues,
     }
+    if config_path is not None:
+        payload["config_path"] = str(config_path)
+    payload["issues"] = issues
+    return payload
 
 
 def _collect_issues(config: dict, paths: dict) -> list[dict]:
@@ -204,5 +211,29 @@ def _collect_issues(config: dict, paths: dict) -> list[dict]:
                 "instance": rid,
                 "message": "no FT4 or FT8 frequencies configured",
             })
+
+        # §12.2 (v0.4): SSRC uniqueness. Duplicate
+        # (freq, preset, sample_rate, encoding) tuples collide on
+        # SSRC; MultiStream's slot dict silently overwrites.
+        seen: dict[tuple, str] = {}
+        for mode in ("ft8", "ft4"):
+            params = get_mode_params(block, mode)
+            for hz in get_freqs(block, mode):
+                key = (int(hz), params["preset"], params["sample_rate"], params["encoding"])
+                if key in seen:
+                    issues.append({
+                        "severity": "fail",
+                        "instance": rid,
+                        "message": (
+                            f"SSRC collision: {mode.upper()} {hz} Hz "
+                            f"duplicates {seen[key]} "
+                            f"(preset={params['preset']}, "
+                            f"rate={params['sample_rate']}, "
+                            f"enc={params['encoding']}) — "
+                            f"ka9q-python will silently drop one"
+                        ),
+                    })
+                else:
+                    seen[key] = f"{mode.upper()} {hz} Hz"
 
     return issues
