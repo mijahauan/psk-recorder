@@ -63,9 +63,10 @@ class PskRecorder:
     def _provision_channels(self) -> None:
         """Create ChannelSinks and register them with MultiStream(s).
 
-        One MultiStream per unique multicast group. In the common case
-        (FT8+FT4 share preset/sample_rate/encoding) all channels land on
-        one group and we end up with a single MultiStream.
+        One MultiStream per unique multicast group, keyed on the
+        (mcast_addr, port) returned by ensure_channel(). In the common
+        case (FT8+FT4 share preset/sample_rate/encoding) all channels
+        land on one group and we end up with a single MultiStream.
         """
         from ka9q import MultiStream, RadiodControl
 
@@ -130,46 +131,28 @@ class PskRecorder:
     ) -> None:
         """Attach sink to the MultiStream for its multicast group.
 
-        Creates a new MultiStream on group mismatch. The grouping key is
-        discovered after the first add_channel (which calls ensure_channel
-        internally); subsequent adds to a MultiStream that resolves to a
-        different group will raise ValueError, at which point we create a
-        fresh MultiStream for that group.
+        Resolves the multicast group up-front via ensure_channel() so
+        we can pick the right MultiStream (or create one) by
+        (mcast_addr, port). MultiStream.add_channel() calls ensure_channel
+        again internally — idempotent, one extra cheap status probe —
+        but this keeps the grouping deterministic instead of relying on
+        ValueError as control flow.
         """
         from ka9q import MultiStream
 
-        if not multi_by_group:
+        info = self._control.ensure_channel(
+            frequency_hz=float(sink.frequency_hz),
+            preset=sink.preset,
+            sample_rate=sink.sample_rate,
+            encoding=sink.encoding,
+        )
+        key = (info.multicast_address, info.port)
+        multi = multi_by_group.get(key)
+        if multi is None:
             multi = MultiStream(control=self._control)
-            info = multi.add_channel(
-                frequency_hz=float(sink.frequency_hz),
-                preset=sink.preset,
-                sample_rate=sink.sample_rate,
-                encoding=sink.encoding,
-                on_samples=sink.on_samples,
-                on_stream_dropped=sink.on_stream_dropped,
-                on_stream_restored=sink.on_stream_restored,
-            )
-            key = (info.multicast_address, info.port)
             multi_by_group[key] = multi
-            return
 
-        for key, multi in multi_by_group.items():
-            try:
-                multi.add_channel(
-                    frequency_hz=float(sink.frequency_hz),
-                    preset=sink.preset,
-                    sample_rate=sink.sample_rate,
-                    encoding=sink.encoding,
-                    on_samples=sink.on_samples,
-                    on_stream_dropped=sink.on_stream_dropped,
-                    on_stream_restored=sink.on_stream_restored,
-                )
-                return
-            except ValueError:
-                continue
-
-        multi = MultiStream(control=self._control)
-        info = multi.add_channel(
+        multi.add_channel(
             frequency_hz=float(sink.frequency_hz),
             preset=sink.preset,
             sample_rate=sink.sample_rate,
@@ -178,8 +161,6 @@ class PskRecorder:
             on_stream_dropped=sink.on_stream_dropped,
             on_stream_restored=sink.on_stream_restored,
         )
-        key = (info.multicast_address, info.port)
-        multi_by_group[key] = multi
 
     def _start_streams(self) -> None:
         for sink in self._sinks:
