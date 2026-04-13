@@ -233,3 +233,7 @@ def _handle_daemon(args):
 def _handle_status(args):
     print("psk-recorder: not running (Phase 1 not yet implemented)")
     sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()
