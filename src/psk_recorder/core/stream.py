@@ -66,6 +66,24 @@ class ChannelSink:
         self._stream_start_epoch: Optional[float] = None
         self._total_delivered: int = 0
 
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @property
+    def frequency_hz(self) -> int:
+        return self._frequency_hz
+
+    def stats_snapshot(self) -> dict:
+        sw = self._slot_worker
+        return {
+            "mode": self._mode,
+            "freq": self._frequency_hz,
+            "decodes_ok": sw.decodes_ok,
+            "decodes_fail": sw.decodes_fail,
+            "slots_empty": sw.slots_empty,
+        }
+
     def start(self) -> None:
         self._slot_worker.start()
         logger.info(

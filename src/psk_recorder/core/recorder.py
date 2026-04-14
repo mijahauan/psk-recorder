@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -53,6 +54,7 @@ class PskRecorder:
             self._provision_channels()
             self._start_streams()
             self._start_uploaders()
+            self._start_stats_thread()
             self._notify_ready()
             self._main_loop()
         except Exception:
@@ -223,6 +225,71 @@ class PskRecorder:
                 logger.info("sd_notify READY=1 sent")
         except Exception:
             logger.debug("sd_notify failed (not running under systemd?)")
+
+    def _start_stats_thread(self) -> None:
+        self._stats_thread = threading.Thread(
+            target=self._stats_loop, daemon=True, name="stats",
+        )
+        self._stats_thread.start()
+
+    def _stats_loop(self) -> None:
+        """Every 60 s, log a summary of decode + spot activity per mode.
+
+        Spot count comes from counting lines added to each mode-log file
+        (the file that decode_ft8 writes into and that pskreporter-sender
+        tails). Decode count comes from each SlotWorker's own counters.
+        """
+        log_dir = Path(self._paths.get("log_dir", "/var/log/psk-recorder"))
+        prev_ok: dict[str, int] = {}
+        prev_fail: dict[str, int] = {}
+        prev_empty: dict[str, int] = {}
+        prev_spot_lines: dict[str, int] = {}
+
+        def count_lines(p: Path) -> int:
+            try:
+                with open(p, "rb") as f:
+                    return sum(1 for _ in f)
+            except OSError:
+                return 0
+
+        # Align first report to the minute boundary + 60 s so the first
+        # window isn't a partial-minute artifact.
+        time.sleep(60.0)
+
+        while self._running:
+            snapshots = [s.stats_snapshot() for s in self._sinks]
+            by_mode: dict[str, dict] = {}
+            for snap in snapshots:
+                m = snap["mode"]
+                agg = by_mode.setdefault(m, {
+                    "freqs": 0, "decodes_ok": 0, "decodes_fail": 0,
+                    "slots_empty": 0,
+                })
+                agg["freqs"] += 1
+                agg["decodes_ok"] += snap["decodes_ok"]
+                agg["decodes_fail"] += snap["decodes_fail"]
+                agg["slots_empty"] += snap["slots_empty"]
+
+            for mode, agg in by_mode.items():
+                spot_log = log_dir / f"{self._radiod_id}-{mode}.log"
+                spot_lines_total = count_lines(spot_log)
+                spots_delta = spot_lines_total - prev_spot_lines.get(mode, spot_lines_total)
+                ok_delta = agg["decodes_ok"] - prev_ok.get(mode, 0)
+                fail_delta = agg["decodes_fail"] - prev_fail.get(mode, 0)
+                empty_delta = agg["slots_empty"] - prev_empty.get(mode, 0)
+
+                logger.info(
+                    "stats %s: spots=%d decodes=%d/%d slots_empty=%d freqs=%d (60s window)",
+                    mode.upper(), spots_delta, ok_delta, ok_delta + fail_delta,
+                    empty_delta, agg["freqs"],
+                )
+
+                prev_ok[mode] = agg["decodes_ok"]
+                prev_fail[mode] = agg["decodes_fail"]
+                prev_empty[mode] = agg["slots_empty"]
+                prev_spot_lines[mode] = spot_lines_total
+
+            time.sleep(60.0)
 
     def _main_loop(self) -> None:
         """Block until signalled, petting the watchdog periodically."""

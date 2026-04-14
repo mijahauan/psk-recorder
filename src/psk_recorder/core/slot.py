@@ -52,6 +52,11 @@ class SlotWorker:
         self._thread: Optional[threading.Thread] = None
         self._next_slot_start: Optional[float] = None
         self._pending_procs: list[tuple[subprocess.Popen, Path]] = []
+        # Counters read by the recorder's stats thread. int ops are atomic
+        # under CPython GIL; no lock needed for the single-reader case.
+        self.decodes_ok = 0
+        self.decodes_fail = 0
+        self.slots_empty = 0
 
     def start(self) -> None:
         self._running = True
@@ -99,6 +104,7 @@ class SlotWorker:
             self._next_slot_start, self._cadence_sec
         )
         if samples is None:
+            self.slots_empty += 1
             logger.warning(
                 "%s %d Hz: slot at %.1f — insufficient samples, skipping",
                 self._mode.upper(), self._frequency_hz, self._next_slot_start,
@@ -174,7 +180,10 @@ class SlotWorker:
             if ret is None:
                 still_pending.append((proc, wav_path))
                 continue
-            if ret != 0:
+            if ret == 0:
+                self.decodes_ok += 1
+            else:
+                self.decodes_fail += 1
                 stderr = proc.stderr.read().decode(errors="replace").strip()[:200]
                 logger.warning(
                     "decode_ft8 exit %d for %s: %s", ret, wav_path.name, stderr,

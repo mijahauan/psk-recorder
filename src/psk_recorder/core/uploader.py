@@ -111,13 +111,33 @@ class PskReporterUploader:
         self._proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            # stderr=DEVNULL (not PIPE) — the supervisor thread never drains
-            # the pipe, so PIPE fills after ~64 KiB of stderr chatter and
-            # blocks the sender's write(), causing it to exit. If we ever
-            # need stderr visibility, swap for a drainer thread that logs.
-            stderr=subprocess.DEVNULL,
+            # stderr captured AND drained by _drain_stderr thread. Must drain
+            # actively — an un-read PIPE fills at ~64 KiB and blocks the
+            # sender's write, causing spurious exits.
+            stderr=subprocess.PIPE,
         )
         logger.info(
-            "pskreporter-sender started (pid=%d) tailing %s mode=%s",
-            self._proc.pid, self._log_path, self._mode,
+            "pskreporter-sender started (pid=%d) tailing %s mode=%s tcp=%s",
+            self._proc.pid, self._log_path, self._mode, self._use_tcp,
         )
+        drainer = threading.Thread(
+            target=self._drain_stderr, args=(self._proc,),
+            daemon=True, name=f"pskrep-drain-{self._mode}",
+        )
+        drainer.start()
+
+    def _drain_stderr(self, proc: subprocess.Popen) -> None:
+        tag = f"pskreporter-{self._mode}"
+        try:
+            for raw in iter(proc.stderr.readline, b""):
+                line = raw.decode(errors="replace").rstrip()
+                if not line:
+                    continue
+                logger.info("[%s] %s", tag, line)
+        except Exception:
+            logger.debug("%s drainer exiting", tag)
+        finally:
+            try:
+                proc.stderr.close()
+            except Exception:
+                pass

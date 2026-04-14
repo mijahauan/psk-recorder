@@ -63,25 +63,15 @@ def write_wav(
         _set_xattrs(path, sample_rate, frequency_hz)
 
 
-_PEAK_HEADROOM = 0.95  # leave ~0.5 dB below full-scale to avoid int16 clip
-
-
 def _float32_to_int16(samples: np.ndarray) -> np.ndarray:
-    """Peak-normalize float32 to int16.
-
-    Radiod's output level drifts across the day (band noise, AGC, antenna
-    conditions). Without normalization, weak FT8 signals fall into int16
-    quantization noise when peaks are small, or clip when peaks exceed 1.0.
-    Per-slot peak normalization matches wspr-recorder's approach and keeps
-    the decoder in its best operating range.
-    """
-    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
-    if peak > 0.0:
-        scale = _PEAK_HEADROOM / peak
-        scaled = samples * scale
-    else:
-        scaled = samples
-    clipped = np.clip(scaled, -1.0, 1.0)
+    """Convert float32 [-1, 1] to int16 [-32767, 32767]."""
+    # NOTE: tried per-slot peak normalization (commit 789064f). It dropped
+    # decode rate ~20× on B3-1 because a transient (QRM burst, lightning,
+    # carrier sweep) sets the slot peak and every other sample gets scaled
+    # into the noise floor. decode_ft8 is amplitude-sensitive; trust the
+    # radiod output level and just clip. If a future change is needed,
+    # robust-peak (e.g. 98th percentile) or RMS-based would be safer.
+    clipped = np.clip(samples, -1.0, 1.0)
     return (clipped * 32767).astype(np.int16)
 
 
