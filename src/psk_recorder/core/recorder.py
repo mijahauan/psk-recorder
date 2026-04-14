@@ -189,6 +189,7 @@ class PskRecorder:
             return
 
         log_dir = Path(self._paths.get("log_dir", "/var/log/psk-recorder"))
+        use_tcp = bool(self._paths.get("pskreporter_tcp", False))
 
         for mode in ("ft8", "ft4"):
             if not get_freqs(self._radiod, mode):
@@ -200,6 +201,7 @@ class PskRecorder:
                 callsign=callsign,
                 grid_square=grid,
                 mode=mode,
+                use_tcp=use_tcp,
             )
             uploader.start()
             self._uploaders.append(uploader)

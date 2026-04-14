@@ -29,12 +29,14 @@ class PskReporterUploader:
         callsign: str,
         grid_square: str,
         mode: str = "ft8",
+        use_tcp: bool = False,
     ):
         self._binary = pskreporter_path
         self._log_path = log_path
         self._callsign = callsign
         self._grid_square = grid_square
         self._mode = mode
+        self._use_tcp = use_tcp
         self._proc: Optional[subprocess.Popen] = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -102,13 +104,18 @@ class PskReporterUploader:
             self._binary,
             f"--callsign={self._callsign}",
             f"--locator={self._grid_square}",
-            str(self._log_path),
-            self._mode,
         ]
+        if self._use_tcp:
+            cmd.append("--tcp")
+        cmd += [str(self._log_path), self._mode]
         self._proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            # stderr=DEVNULL (not PIPE) — the supervisor thread never drains
+            # the pipe, so PIPE fills after ~64 KiB of stderr chatter and
+            # blocks the sender's write(), causing it to exit. If we ever
+            # need stderr visibility, swap for a drainer thread that logs.
+            stderr=subprocess.DEVNULL,
         )
         logger.info(
             "pskreporter-sender started (pid=%d) tailing %s mode=%s",

@@ -59,17 +59,38 @@ class WavWriterTests(unittest.TestCase):
             write_wav(path, np.zeros(100, dtype=np.float32), 12000)
             self.assertTrue(path.exists())
 
-    def test_float32_to_int16_clipping(self):
+    def test_float32_to_int16_peak_normalized(self):
+        # Writer normalizes to 0.95 full-scale. For peak=2.0, all samples
+        # scale by 0.95/2.0 = 0.475 before int16 cast. 2.0 → 0.95 → 31128.
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.wav"
             samples = np.array([2.0, -2.0, 0.5, -0.5], dtype=np.float32)
             write_wav(path, samples, sample_rate=12000)
 
-            data = path.read_bytes()
-            pcm_data = data[44:]
-            int16_vals = np.frombuffer(pcm_data, dtype=np.int16)
-            self.assertEqual(int16_vals[0], 32767)
-            self.assertEqual(int16_vals[1], -32767)
+            pcm = np.frombuffer(path.read_bytes()[44:], dtype=np.int16)
+            # 0.95 * 32767 ≈ 31128.65 → astype(int16) truncates to 31128
+            # for +peak but 31129 after sign on -peak (rounding asymmetry).
+            self.assertIn(pcm[0], (31128, 31129))
+            self.assertIn(pcm[1], (-31128, -31129))
+            # Mid-amplitude samples scale by the same factor, not hard-clipped.
+            self.assertAlmostEqual(pcm[2] / pcm[0], 0.25, places=2)
+
+    def test_float32_quiet_signal_lifted_to_full_scale(self):
+        # A signal peaking at 0.01 should still produce a near-full-scale WAV,
+        # not a WAV that's 99% quantization noise.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.wav"
+            samples = np.array([0.01, -0.01, 0.005], dtype=np.float32)
+            write_wav(path, samples, sample_rate=12000)
+            pcm = np.frombuffer(path.read_bytes()[44:], dtype=np.int16)
+            self.assertGreater(abs(int(pcm[0])), 30000)
+
+    def test_float32_all_zero_stays_zero(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.wav"
+            write_wav(path, np.zeros(16, dtype=np.float32), 12000)
+            pcm = np.frombuffer(path.read_bytes()[44:], dtype=np.int16)
+            self.assertTrue(np.all(pcm == 0))
 
 
 if __name__ == "__main__":
