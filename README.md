@@ -1,0 +1,81 @@
+# psk-recorder
+
+FT4/FT8 spot recorder and PSK Reporter uploader for [ka9q-radio][ka9q].
+Replaces the native `ft8-record` / `ft8-decode` / `pskreporter@` shell
+pipeline with a coordinated Python client that follows the HamSCI
+sigmond [client contract][contract] (v0.4).
+
+```
+radiod (ka9q-radio)
+  │   RTP multicast, one stream per (band, mode) channel
+  ▼
+psk-recorder daemon (one per radiod)
+  ├─ per-channel: ring buffer → 15s/7.5s slot WAV → fork decode_ft8
+  └─ per-mode:    pskreporter-sender (UDP or TCP to pskreporter.info)
+```
+
+One `psk-recorder@<radiod_id>.service` instance per radiod. Each
+instance handles all configured FT8 and FT4 frequencies on that
+radiod.
+
+## Quickstart
+
+External binaries must be present first:
+- `decode_ft8` from [ka9q/ft8_lib][ft8_lib] → `/usr/local/bin/decode_ft8`
+- `pskreporter-sender` from [pjsg/ftlib-pskreporter][ftlib] → `/usr/local/bin/pskreporter-sender`
+- A working `radiod@<id>.service` from [ka9q/ka9q-radio][ka9q]
+
+Then:
+
+```bash
+git clone https://github.com/mijahauan/psk-recorder /opt/git/psk-recorder
+sudo /opt/git/psk-recorder/scripts/install.sh   # creates user, venv, config, units
+sudoedit /etc/psk-recorder/psk-recorder-config.toml   # set callsign, grid, freqs, [[radiod]]
+sudo systemctl start psk-recorder@<radiod_id>
+journalctl -fu psk-recorder@<radiod_id>
+```
+
+For ongoing development on a checked-out repo:
+
+```bash
+sudo /opt/git/psk-recorder/scripts/deploy.sh         # pip install -e + restart instances
+sudo /opt/git/psk-recorder/scripts/deploy.sh --pull  # git pull then deploy
+```
+
+For tests (no venv needed):
+
+```bash
+PYTHONPATH=src python3 -m pytest tests/ -v
+```
+
+## Documentation
+
+- [docs/INSTALL.md](docs/INSTALL.md) — full install (deps, multi-radiod, paths, permissions)
+- [docs/CONFIG.md](docs/CONFIG.md) — TOML schema reference (every section, every key)
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) — running it: logs, monitoring, common failures
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — internals for contributors
+- [docs/SIGMOND-CONTRACT.md](docs/SIGMOND-CONTRACT.md) — how psk-recorder satisfies the HamSCI client contract
+- [CLAUDE.md](CLAUDE.md) — development briefing (workflow, conventions)
+
+## What it does and does not
+
+**Does:** receive RTP multicast from `radiod`, slot-align audio to FT8
+(15s) or FT4 (7.5s) cadence, write a WAV per slot, fork `decode_ft8`,
+append spots to per-mode log files, supervise a long-running
+`pskreporter-sender` per mode that tails those logs and uploads to
+pskreporter.info.
+
+**Does not:** reimplement the FT8/FT4 decoder, reimplement the
+pskreporter protocol, or talk to `radiod` over anything but
+[ka9q-python][ka9qpy]. Multicast destination addresses are *resolved
+from* radiod, never specified by psk-recorder.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Author: Michael Hauan, AC0G.
+
+[ka9q]: https://github.com/ka9q/ka9q-radio
+[ka9qpy]: https://github.com/mijahauan/ka9q-python
+[ft8_lib]: https://github.com/ka9q/ft8_lib
+[ftlib]: https://github.com/pjsg/ftlib-pskreporter
+[contract]: https://github.com/mijahauan/sigmond/blob/main/docs/CLIENT-CONTRACT.md
