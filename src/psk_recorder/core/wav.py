@@ -63,16 +63,26 @@ def write_wav(
         _set_xattrs(path, sample_rate, frequency_hz)
 
 
+# RMS-target normalization. Per-slot peak-norm (789064f, reverted in
+# 50bd7d9) failed because one transient sets the peak and scales every
+# other sample into the noise floor. RMS is dominated by bulk signal,
+# not spikes, so one impulse barely moves it. MAX_GAIN ceilings silent
+# slots so pure noise doesn't get amplified into saturating garbage.
+_TARGET_RMS_INT16 = 2000.0   # ~ -24 dBFS, leaves ~24 dB peak headroom
+_MAX_GAIN = 2000.0
+
+
 def _float32_to_int16(samples: np.ndarray) -> np.ndarray:
-    """Convert float32 [-1, 1] to int16 [-32767, 32767]."""
-    # NOTE: tried per-slot peak normalization (commit 789064f). It dropped
-    # decode rate ~20× on B3-1 because a transient (QRM burst, lightning,
-    # carrier sweep) sets the slot peak and every other sample gets scaled
-    # into the noise floor. decode_ft8 is amplitude-sensitive; trust the
-    # radiod output level and just clip. If a future change is needed,
-    # robust-peak (e.g. 98th percentile) or RMS-based would be safer.
-    clipped = np.clip(samples, -1.0, 1.0)
-    return (clipped * 32767).astype(np.int16)
+    """Convert float32 audio to int16 with RMS-target normalization."""
+    if samples.size == 0:
+        return np.zeros(0, dtype=np.int16)
+    rms = float(np.sqrt(np.mean(samples.astype(np.float64) ** 2)))
+    if rms > 0.0:
+        gain = min(_TARGET_RMS_INT16 / (rms * 32767.0), _MAX_GAIN)
+    else:
+        gain = 1.0
+    scaled = samples * gain * 32767.0
+    return np.clip(scaled, -32768.0, 32767.0).astype(np.int16)
 
 
 def _set_xattrs(path: Path, sample_rate: int, frequency_hz: int) -> None:

@@ -7,11 +7,7 @@ spool_dir   = "/var/lib/psk-recorder"
 log_dir     = "/var/log/psk-recorder"
 decoder     = "/usr/local/bin/decode_ft8"
 pskreporter = "/usr/local/bin/pskreporter-sender"
-# pskreporter_tcp: TCP upload is supported by ftlib-pskreporter but broken
-# in practice — the sender opens the connection, sends one packet, and
-# never schedules another batch. Leave UDP (default) until the upstream
-# TCP scheduling bug is fixed. Keep the flag wired for future use.
-pskreporter_tcp = false
+pskreporter_tcp = true
 keep_wav    = false
 
 [[radiod]]
