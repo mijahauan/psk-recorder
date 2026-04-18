@@ -19,10 +19,15 @@ follows the HamSCI sigmond client contract.
 ## Quick Reference
 
 ```bash
-# Development (no venv needed on dev box — run from source)
+# Development (uv is the standard; creates .venv/ and locks via uv.lock)
+uv sync --extra dev
+uv run pytest tests/ -v
+uv run psk-recorder inventory --json --config config/psk-recorder-config.toml.template
+uv run psk-recorder validate --json --config tests/fixtures/test-config.toml
+
+# pip fallback / run-from-source (no install):
 PYTHONPATH=src python3 -m pytest tests/ -v
 PYTHONPATH=src python3 -m psk_recorder inventory --json --config config/psk-recorder-config.toml.template
-PYTHONPATH=src python3 -m psk_recorder validate --json --config tests/fixtures/test-config.toml
 
 # Production install (Pattern A editable install)
 sudo ./scripts/install.sh           # first-run: user, venv, config, systemd
@@ -168,9 +173,9 @@ freqs_hz    = [14080000, 7047500, ...]
 ## Running Tests
 
 ```bash
-PYTHONPATH=src python3 -m pytest tests/ -v
+uv sync --extra dev
+uv run pytest tests/ -v
 ```
 
-No venv or pip install required for testing — just `PYTHONPATH=src`.
 Tests use subprocess invocations against the fixture config and verify
 JSON contract compliance end-to-end.
