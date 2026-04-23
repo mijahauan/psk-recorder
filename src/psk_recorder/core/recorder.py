@@ -76,6 +76,38 @@ class PskRecorder:
         logger.info("Connecting to radiod at %s", status)
         self._control = RadiodControl(status)
 
+        # Surface the Fusion governor identity at startup so the journal
+        # record makes multi-radiod attribution clear. See
+        # hf-timestd/docs/METROLOGY.md §4.5.1: when Fusion's governor
+        # radiod differs from the one this recorder subscribes to, the
+        # per-host clock-skew between the two radiods' hosts adds to
+        # uncertainty. With a single-radiod station the two will match.
+        try:
+            from psk_recorder.core.authority_reader import AuthorityReader
+            snap = AuthorityReader().read()
+            governor = snap.governor_radiod if snap is not None else None
+        except Exception as e:
+            logger.debug("authority.json read at startup failed: %s", e)
+            governor = None
+        if governor and governor != status:
+            logger.info(
+                "Timing attribution: client_radiod=%s, fusion_governor_radiod=%s "
+                "(differ — per-host clock-skew uncertainty applies to all spots)",
+                status, governor,
+            )
+        elif governor:
+            logger.info(
+                "Timing attribution: client_radiod=fusion_governor_radiod=%s",
+                status,
+            )
+        else:
+            logger.info(
+                "Timing attribution: client_radiod=%s, fusion_governor_radiod=<none> "
+                "(hf-timestd authority not published — recorder will anchor via "
+                "wall clock at stream start)",
+                status,
+            )
+
         spool_root = Path(self._paths.get(
             "spool_dir", "/var/lib/psk-recorder"
         )) / self._radiod_id
