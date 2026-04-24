@@ -19,6 +19,17 @@ MAX_BACKOFF = 60.0
 INITIAL_BACKOFF = 2.0
 
 
+def _resolve_launcher(binary: str) -> tuple[str, ...]:
+    try:
+        with open(binary, "rb") as f:
+            first = f.readline(128)
+    except OSError:
+        return (binary,)
+    if first.startswith(b"#!") and b"python" in first and b"python3" not in first:
+        return ("python3", binary)
+    return (binary,)
+
+
 class PskReporterUploader:
     """Manages a pskreporter subprocess that tails a spot log."""
 
@@ -100,8 +111,11 @@ class PskReporterUploader:
     def _start_process(self) -> None:
         # pskreporter-sender CLI:
         #   pskreporter-sender --callsign=XX --locator=YY <logfile> [<mode>]
-        cmd = [
-            self._binary,
+        # ftlib-pskreporter's sender ships with "#!/usr/bin/env python", which
+        # fails on Debian where only python3 is on PATH. Match wsprdaemon's
+        # workaround: if the binary is a python script, invoke it via python3.
+        cmd = list(_resolve_launcher(self._binary))
+        cmd += [
             f"--callsign={self._callsign}",
             f"--locator={self._grid_square}",
         ]
