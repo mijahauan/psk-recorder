@@ -112,6 +112,29 @@ def main():
     sub_status = subparsers.add_parser("status", help="Health check")
     _add_common(sub_status)
 
+    # Configuration interview (CONTRACT-v0.5 §14).
+    sub_cfg = subparsers.add_parser(
+        "config",
+        help="initialize or edit psk-recorder configuration",
+    )
+    cfg_sub = sub_cfg.add_subparsers(dest="config_command")
+
+    sub_init = cfg_sub.add_parser(
+        "init", help="write a fresh psk-recorder-config.toml from template")
+    sub_init.add_argument("--reconfig", action="store_true",
+                          help="overwrite existing config")
+    sub_init.add_argument("--non-interactive", action="store_true",
+                          help="use env-var defaults, do not prompt")
+    _add_common(sub_init)
+
+    sub_edit = cfg_sub.add_parser(
+        "edit", help="review and update an existing config")
+    sub_edit.add_argument("--non-interactive", action="store_true",
+                          help="show current values, do not prompt")
+    sub_edit.add_argument("--radiod-id", default=None,
+                          help="focus edits on a specific [[radiod]] block")
+    _add_common(sub_edit)
+
     args = parser.parse_args()
 
     if args.log_level and not _contract_quiet:
@@ -129,9 +152,23 @@ def main():
         _handle_daemon(args)
     elif args.command == "status":
         _handle_status(args)
+    elif args.command == "config":
+        _handle_config(args)
     else:
         parser.print_help()
         sys.exit(1)
+
+
+def _handle_config(args):
+    from psk_recorder import configurator
+
+    sub = getattr(args, "config_command", None)
+    if sub == "init":
+        sys.exit(configurator.cmd_config_init(args))
+    if sub == "edit":
+        sys.exit(configurator.cmd_config_edit(args))
+    print("usage: psk-recorder config {init|edit} [--non-interactive]")
+    sys.exit(2)
 
 
 def _handle_inventory(args):

@@ -4,6 +4,13 @@ version          = "0.1.0"
 contract_version = "0.4"
 license          = "MIT"
 
+# Configuration interview (CONTRACT-v0.5 §14).  Sigmond invokes
+# psk-recorder's own argparse subcommands; both honor the §14.3 env var
+# bag (STATION_*, SIGMOND_INSTANCE, SIGMOND_RADIOD_STATUS) as defaults.
+[contract.config]
+init = ["/usr/local/bin/psk-recorder", "config", "init"]
+edit = ["/usr/local/bin/psk-recorder", "config", "edit"]
+
 [build]
 steps = [
     "python3 -m venv /opt/psk-recorder/venv",
