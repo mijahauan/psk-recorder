@@ -18,7 +18,7 @@
 set -euo pipefail
 
 SERVICE_USER="pskrec"
-REPO_SOURCE="/opt/git/psk-recorder"
+REPO_SOURCE="/opt/git/sigmond/psk-recorder"
 VENV_DIR="/opt/psk-recorder/venv"
 
 ui_info()  { echo "[INFO]  $*"; }

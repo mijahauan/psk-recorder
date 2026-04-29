@@ -234,10 +234,10 @@ deleted it first. To retain WAVs for debugging, snapshot the file
 
 ### §12.5 Pattern A canonical layout (SHOULD) — implemented
 
-Repo lives at `/opt/git/psk-recorder` (group-readable by the service
+Repo lives at `/opt/git/sigmond/psk-recorder` (group-readable by the service
 user `pskrec`). `scripts/install.sh` enforces this and verifies
 traversability with a `sudo -u pskrec test -r ...` check. The
-anti-pattern (`/opt/git/...` as a symlink to `~/git/...`) is rejected
+anti-pattern (`/opt/git/sigmond/...` as a symlink to `~/git/...`) is rejected
 by the install script — the service user can't traverse a mode-700
 home.
 

@@ -28,8 +28,8 @@ External binaries must be present first:
 Then:
 
 ```bash
-git clone https://github.com/mijahauan/psk-recorder /opt/git/psk-recorder
-sudo /opt/git/psk-recorder/scripts/install.sh   # creates user, venv, config, units
+git clone https://github.com/mijahauan/psk-recorder /opt/git/sigmond/psk-recorder
+sudo /opt/git/sigmond/psk-recorder/scripts/install.sh   # creates user, venv, config, units
 sudoedit /etc/psk-recorder/psk-recorder-config.toml   # set callsign, grid, freqs, [[radiod]]
 sudo systemctl start psk-recorder@<radiod_id>
 journalctl -fu psk-recorder@<radiod_id>
@@ -38,8 +38,8 @@ journalctl -fu psk-recorder@<radiod_id>
 For ongoing development on a checked-out repo:
 
 ```bash
-sudo /opt/git/psk-recorder/scripts/deploy.sh         # pip install -e + restart instances
-sudo /opt/git/psk-recorder/scripts/deploy.sh --pull  # git pull then deploy
+sudo /opt/git/sigmond/psk-recorder/scripts/deploy.sh         # pip install -e + restart instances
+sudo /opt/git/sigmond/psk-recorder/scripts/deploy.sh --pull  # git pull then deploy
 ```
 
 For tests (no venv needed):

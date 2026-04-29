@@ -167,7 +167,7 @@ freqs_hz    = [14080000, 7047500, ...]
 - Spot logs: `/var/log/psk-recorder/<radiod_id>-{ft8,ft4}.log`
 - Process log: `/var/log/psk-recorder/<radiod_id>.log`
 - Venv: `/opt/psk-recorder/venv`
-- Source: `/opt/git/psk-recorder` (editable install)
+- Source: `/opt/git/sigmond/psk-recorder` (editable install)
 - Service user: `pskrec:pskrec`
 
 ## Running Tests

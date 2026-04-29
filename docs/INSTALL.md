@@ -34,17 +34,17 @@ If this fails, fix Avahi or `nsswitch.conf` before going further.
 
 ## First-run install: `scripts/install.sh`
 
-Run as root from a clone at `/opt/git/psk-recorder`:
+Run as root from a clone at `/opt/git/sigmond/psk-recorder`:
 
 ```bash
-sudo /opt/git/psk-recorder/scripts/install.sh
+sudo /opt/git/sigmond/psk-recorder/scripts/install.sh
 ```
 
 What it does, in order:
 
 1. **Service user** — creates `pskrec:pskrec` (system user, nologin
    shell, no home directory). Idempotent.
-2. **Repo link** — ensures `/opt/git/psk-recorder` is reachable; if
+2. **Repo link** — ensures `/opt/git/sigmond/psk-recorder` is reachable; if
    you cloned elsewhere, symlinks it. Verifies `pskrec` can `cat`
    `src/psk_recorder/__init__.py` (catches permission/traversability
    bugs early).
@@ -52,7 +52,7 @@ What it does, in order:
    installing.
 4. **Venv** — `/opt/psk-recorder/venv` (Python ≥ 3.10), pip/setuptools/wheel
    upgraded.
-5. **Editable install** — `pip install -e /opt/git/psk-recorder`.
+5. **Editable install** — `pip install -e /opt/git/sigmond/psk-recorder`.
    Source edits in the repo take effect on next service restart, no
    reinstall needed.
 6. **Import smoke-test** — `sudo -u pskrec python3 -c 'import psk_recorder'`.
@@ -82,10 +82,10 @@ sudo systemctl start psk-recorder@<radiod_id>
 For developer iteration after the initial install:
 
 ```bash
-sudo /opt/git/psk-recorder/scripts/deploy.sh           # refresh editable install + restart
-sudo /opt/git/psk-recorder/scripts/deploy.sh --pull    # git pull --ff-only first
-sudo /opt/git/psk-recorder/scripts/deploy.sh --no-restart   # install only, don't bounce instances
-sudo /opt/git/psk-recorder/scripts/deploy.sh --force-dirty  # allow uncommitted changes
+sudo /opt/git/sigmond/psk-recorder/scripts/deploy.sh           # refresh editable install + restart
+sudo /opt/git/sigmond/psk-recorder/scripts/deploy.sh --pull    # git pull --ff-only first
+sudo /opt/git/sigmond/psk-recorder/scripts/deploy.sh --no-restart   # install only, don't bounce instances
+sudo /opt/git/sigmond/psk-recorder/scripts/deploy.sh --force-dirty  # allow uncommitted changes
 ```
 
 What it does:
@@ -93,7 +93,7 @@ What it does:
 1. Verifies the venv exists (errors if not — use `install.sh` first).
 2. Verifies clean git tree unless `--force-dirty`.
 3. Optional `--pull`.
-4. `pip install -e /opt/git/psk-recorder` (refresh in case
+4. `pip install -e /opt/git/sigmond/psk-recorder` (refresh in case
    `pyproject.toml` changed).
 5. Updates the systemd unit file (`install -m 644`).
 6. Unless `--no-restart`, restarts every enabled `psk-recorder@*` instance.
@@ -136,7 +136,7 @@ Instances are independent — failure of one does not affect the other.
 | `/etc/psk-recorder/env/<id>.env` | Optional per-instance env (sigmond-managed) | root |
 | `/etc/sigmond/coordination.env` | Sigmond cross-client coordination env | root |
 | `/etc/systemd/system/psk-recorder@.service` | Templated unit | root |
-| `/opt/git/psk-recorder/` | Source checkout (editable install root) | repo owner; readable by `pskrec` |
+| `/opt/git/sigmond/psk-recorder/` | Source checkout (editable install root) | repo owner; readable by `pskrec` |
 | `/opt/psk-recorder/venv/` | Python venv | root |
 | `/var/lib/psk-recorder/<radiod_id>/{ft8,ft4}/` | WAV spool (deleted after decode unless `keep_wav = true`) | `pskrec` |
 | `/var/log/psk-recorder/<radiod_id>.log` | Process log (systemd-redirected stdout) | `pskrec` |
@@ -154,5 +154,5 @@ sudo rm -rf /opt/psk-recorder /etc/psk-recorder /var/lib/psk-recorder /var/log/p
 sudo userdel pskrec
 ```
 
-The repo at `/opt/git/psk-recorder` and the external binaries
+The repo at `/opt/git/sigmond/psk-recorder` and the external binaries
 (`decode_ft8`, `pskreporter-sender`, `radiod`) are untouched.

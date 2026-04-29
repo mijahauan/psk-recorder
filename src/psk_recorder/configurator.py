@@ -32,7 +32,7 @@ def _find_template() -> Optional[Path]:
     candidates = [
         Path(__file__).resolve().parent.parent.parent
             / "config" / "psk-recorder-config.toml.template",
-        Path("/opt/git/psk-recorder/config/psk-recorder-config.toml.template"),
+        Path("/opt/git/sigmond/psk-recorder/config/psk-recorder-config.toml.template"),
         Path("/usr/local/share/psk-recorder/psk-recorder-config.toml.template"),
     ]
     for p in candidates:

@@ -5,7 +5,7 @@
 #
 # What it does:
 #   1. Creates service user pskrec:pskrec
-#   2. Clones/links repo to /opt/git/psk-recorder
+#   2. Clones/links repo to /opt/git/sigmond/psk-recorder
 #   3. Creates venv at /opt/psk-recorder/venv with editable install
 #   4. Renders config template (non-destructive — never overwrites)
 #   5. Installs systemd unit template
@@ -18,7 +18,7 @@ set -euo pipefail
 
 SERVICE_USER="pskrec"
 SERVICE_GROUP="pskrec"
-REPO_SOURCE="/opt/git/psk-recorder"
+REPO_SOURCE="/opt/git/sigmond/psk-recorder"
 VENV_DIR="/opt/psk-recorder/venv"
 CONFIG_DIR="/etc/psk-recorder"
 CONFIG_FILE="${CONFIG_DIR}/psk-recorder-config.toml"
@@ -64,7 +64,7 @@ fi
 # Traversability check (Pattern A defense)
 if ! sudo -u "$SERVICE_USER" test -r "$REPO_SOURCE/src/psk_recorder/__init__.py"; then
     ui_error "Service user $SERVICE_USER cannot read $REPO_SOURCE/src/psk_recorder/__init__.py"
-    ui_error "Fix: ensure the repo is at /opt/git/psk-recorder (not under a mode-700 home)"
+    ui_error "Fix: ensure the repo is at /opt/git/sigmond/psk-recorder (not under a mode-700 home)"
     ui_error "  or: chmod g+rx the path and add $SERVICE_USER to the owner's group"
     exit 1
 fi
