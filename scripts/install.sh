@@ -74,7 +74,15 @@ if $DO_PULL; then
     git -C "$REPO_SOURCE" pull --ff-only
 fi
 
-if [[ ! -d "$VENV_DIR" ]]; then
+# Recreate the venv if it doesn't exist, OR if it's incomplete (a
+# previous install that crashed before bootstrapping pip leaves a
+# partial venv with python but no bin/pip — re-running install would
+# then trip on `$VENV_DIR/bin/pip` not existing).
+if [[ ! -d "$VENV_DIR" ]] || [[ ! -x "$VENV_DIR/bin/pip" ]]; then
+    if [[ -d "$VENV_DIR" ]]; then
+        ui_warn "Venv at $VENV_DIR is incomplete — recreating"
+        rm -rf "$VENV_DIR"
+    fi
     ui_info "Creating venv at $VENV_DIR"
     mkdir -p "$(dirname "$VENV_DIR")"
     python3 -m venv "$VENV_DIR"
